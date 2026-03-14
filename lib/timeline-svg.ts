@@ -38,9 +38,11 @@ const LEGEND_ABBREV: Record<string, string> = {
 const MAX_DISPLAY_NAME_LEN = 24
 const TRUNCATE_AT = 22
 const LABEL_WIDTH = 180
-const LABEL_VERTICAL_GAP = 10
+const LABEL_HEIGHT = 26
+const LABEL_VERTICAL_GAP = 8
 const TITLE_ZONE_BOTTOM = 72
 const LEGEND_ZONE_HEIGHT = 80
+const RECT_MARGIN = 2
 
 function escapeXml(raw: string): string {
   return raw
@@ -59,12 +61,11 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
   const contentBottom = legendZoneTop
   const timelineY = contentTop + (contentBottom - contentTop) / 2
   const dotRadius = 5
-  const labelHeight = 26
+  const labelHeight = LABEL_HEIGHT
   const labelWidth = LABEL_WIDTH
   const labelRadius = 6
-  const minLabelSpacing = 110
-  const baseOffset = 58
-  const stackStep = labelHeight + LABEL_VERTICAL_GAP
+  const baseOffset = 56
+  const slotStep = labelHeight + LABEL_VERTICAL_GAP
   const labelMinY = contentTop + labelHeight / 2
   const labelMaxY = contentBottom - labelHeight / 2
 
@@ -103,29 +104,78 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
     `)
   }
 
-  const repoGroups: TimelineRepo[][] = []
-  const reposToProcess = [...repos]
+  // Build candidate Y positions: above timeline first (descending), then below (ascending)
+  const candidateYsAbove: number[] = []
+  for (let y = timelineY - baseOffset; y >= labelMinY; y -= slotStep) candidateYsAbove.push(y)
+  const candidateYsBelow: number[] = []
+  for (let y = timelineY + baseOffset; y <= labelMaxY; y += slotStep) candidateYsBelow.push(y)
+  const candidateYs = [...candidateYsAbove, ...candidateYsBelow]
 
-  while (reposToProcess.length > 0) {
-    const currentGroup: TimelineRepo[] = [reposToProcess.shift()!]
-    const groupDate = new Date(currentGroup[0].created_at)
-    const groupX = getXPosition(groupDate)
+  function rectOverlaps(
+    left: number,
+    top: number,
+    right: number,
+    bottom: number,
+    placed: { left: number; top: number; right: number; bottom: number }[]
+  ): boolean {
+    const m = RECT_MARGIN
+    for (const p of placed) {
+      if (left < p.right + m && right + m > p.left && top < p.bottom + m && bottom + m > p.top) return true
+    }
+    return false
+  }
 
-    let i = 0
-    while (i < reposToProcess.length) {
-      const nextRepo = reposToProcess[i]
-      const nextDate = new Date(nextRepo.created_at)
-      const nextX = getXPosition(nextDate)
+  const placedRects: { left: number; top: number; right: number; bottom: number }[] = []
 
-      if (Math.abs(nextX - groupX) < minLabelSpacing) {
-        currentGroup.push(nextRepo)
-        reposToProcess.splice(i, 1)
-      } else {
-        i++
+  for (const repo of repos) {
+    const repoDate = new Date(repo.created_at)
+    const repoX = getXPosition(repoDate)
+    const halfW = labelWidth / 2
+    const halfH = labelHeight / 2
+
+    let labelY: number | null = null
+    for (const cy of candidateYs) {
+      const left = repoX - halfW
+      const right = repoX + halfW
+      const top = cy - halfH
+      const bottom = cy + halfH
+      if (top < contentTop || bottom > contentBottom) continue
+      if (!rectOverlaps(left, top, right, bottom, placedRects)) {
+        labelY = cy
+        placedRects.push({ left, top, right, bottom })
+        break
       }
     }
+    if (labelY == null) {
+      labelY = Math.max(labelMinY, Math.min(labelMaxY, timelineY + baseOffset))
+      const left = repoX - halfW
+      const right = repoX + halfW
+      const top = labelY - halfH
+      const bottom = labelY + halfH
+      placedRects.push({ left, top, right, bottom })
+    }
 
-    repoGroups.push(currentGroup)
+    const color =
+      repo.language && LANGUAGE_COLORS[repo.language] ? LANGUAGE_COLORS[repo.language] : LANGUAGE_COLORS.default
+
+    dots += `<circle cx="${repoX}" cy="${timelineY}" r="${dotRadius}" fill="${color}" />`
+    connections += `
+        <line x1="${repoX}" y1="${timelineY}" x2="${repoX}" y2="${labelY}" stroke="var(--color-connection)" stroke-width="1" />
+      `
+
+    const displayName = repo.name.length > MAX_DISPLAY_NAME_LEN ? repo.name.substring(0, TRUNCATE_AT) + "..." : repo.name
+    const tooltipText = `${repo.name}${repo.language ? ` · ${repo.language}` : ""} · ${new Date(repo.created_at).getFullYear()}`
+    const titleEscaped = escapeXml(tooltipText)
+
+    labels += `
+        <g>
+          <a href="${repo.html_url}" target="_blank">
+            <title>${titleEscaped}</title>
+            <rect x="${repoX - halfW}" y="${labelY - halfH}" width="${labelWidth}" height="${labelHeight}" rx="${labelRadius}" fill="var(--color-card)" stroke="var(--color-border)" />
+            <text x="${repoX}" y="${labelY + 5}" text-anchor="middle" font-size="12" fill="var(--color-text)">${displayName}</text>
+          </a>
+        </g>
+      `
   }
 
   // Collect languages actually present (deterministic order: by first occurrence in repos)
@@ -158,71 +208,6 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
       <text x="${legendStartX}" y="${legendAreaY - 12}" text-anchor="end" font-size="9" fill="var(--color-text-light)" opacity="0.8">Lang</text>
       ${legendParts.join("")}
   ` : ""
-
-  repoGroups.forEach((group, groupIndex) => {
-    const preferTop = groupIndex % 2 === 0
-    const topFirstLabelY = timelineY - baseOffset
-    const topLastLabelY = timelineY - baseOffset - (group.length - 1) * stackStep
-    const bottomFirstLabelY = timelineY + baseOffset
-    const bottomLastLabelY = timelineY + baseOffset + (group.length - 1) * stackStep
-    const topFits = topLastLabelY >= labelMinY
-    const bottomFits = bottomLastLabelY <= labelMaxY
-    const isTop = (preferTop && topFits) || (!preferTop && !bottomFits)
-
-    group.forEach((repo, repoIndex) => {
-      const repoDate = new Date(repo.created_at)
-      const repoX = getXPosition(repoDate)
-
-      const offset = isTop ? -baseOffset : baseOffset
-      const stackOffset = repoIndex * stackStep * (isTop ? -1 : 1)
-      let labelY = timelineY + offset + stackOffset
-      labelY = Math.max(labelMinY, Math.min(labelMaxY, labelY))
-
-      const color =
-        repo.language && LANGUAGE_COLORS[repo.language] ? LANGUAGE_COLORS[repo.language] : LANGUAGE_COLORS.default
-
-      dots += `<circle cx="${repoX}" cy="${timelineY}" r="${dotRadius}" fill="${color}" />`
-
-      // Vertical line only: dot straight up/down to label (no diagonal spaghetti)
-      connections += `
-        <line
-          x1="${repoX}" y1="${timelineY}"
-          x2="${repoX}" y2="${labelY}"
-          stroke="var(--color-connection)"
-          stroke-width="1"
-        />
-      `
-
-      const displayName = repo.name.length > MAX_DISPLAY_NAME_LEN ? repo.name.substring(0, TRUNCATE_AT) + "..." : repo.name
-      const yearCreated = new Date(repo.created_at).getFullYear()
-      const tooltipText = `${repo.name}${repo.language ? ` · ${repo.language}` : ""} · ${yearCreated}`
-      const titleEscaped = escapeXml(tooltipText)
-
-      labels += `
-        <g>
-          <a href="${repo.html_url}" target="_blank">
-            <title>${titleEscaped}</title>
-            <rect
-              x="${repoX - labelWidth / 2}"
-              y="${labelY - labelHeight / 2}"
-              width="${labelWidth}"
-              height="${labelHeight}"
-              rx="${labelRadius}"
-              fill="var(--color-card)"
-              stroke="var(--color-border)"
-            />
-            <text
-              x="${repoX}"
-              y="${labelY + 5}"
-              text-anchor="middle"
-              font-size="12"
-              fill="var(--color-text)"
-            >${displayName}</text>
-          </a>
-        </g>
-      `
-    })
-  })
 
   return `
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
