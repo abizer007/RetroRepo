@@ -38,7 +38,9 @@ const LEGEND_ABBREV: Record<string, string> = {
 const MAX_DISPLAY_NAME_LEN = 24
 const TRUNCATE_AT = 22
 const LABEL_WIDTH = 180
-const STACK_STEP = 28
+const STACK_STEP = 24
+const TITLE_ZONE_BOTTOM = 72
+const LEGEND_ZONE_HEIGHT = 80
 
 function escapeXml(raw: string): string {
   return raw
@@ -49,18 +51,22 @@ function escapeXml(raw: string): string {
 }
 
 export function generateTimelineSvg(repos: TimelineRepo[], username: string): string {
-  // Larger canvas to reduce density; vertical-only connectors to avoid line spaghetti
   const width = 1000
-  const height = 500
+  const height = 560
   const padding = 70
-  const timelineY = height / 2
+  const legendZoneTop = height - LEGEND_ZONE_HEIGHT
+  const contentTop = TITLE_ZONE_BOTTOM
+  const contentBottom = legendZoneTop
+  const timelineY = contentTop + (contentBottom - contentTop) / 2
   const dotRadius = 5
   const labelHeight = 26
   const labelWidth = LABEL_WIDTH
   const labelRadius = 6
   const minLabelSpacing = 95
-  const baseOffset = 72
-  const stackStep = labelHeight + 8
+  const baseOffset = 56
+  const stackStep = STACK_STEP
+  const labelMinY = contentTop + labelHeight / 2
+  const labelMaxY = contentBottom - labelHeight / 2
 
   const firstDate = new Date(repos[0].created_at)
   const lastDate = new Date(repos[repos.length - 1].created_at)
@@ -133,7 +139,7 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
     }
   }
 
-  const legendY = height - 24
+  const legendAreaY = legendZoneTop + 20
   const legendStartX = width - padding - 16
   const legendItemSpacing = 44
   const legendParts: string[] = []
@@ -143,18 +149,25 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
     const displayLang = LEGEND_ABBREV[lang] ?? lang
     const color = lang === "Other" ? LANGUAGE_COLORS.default : (LANGUAGE_COLORS[lang] ?? LANGUAGE_COLORS.default)
     legendParts.push(`
-      <circle cx="${legendX}" cy="${legendY - 4}" r="3.5" fill="${color}" />
-      <text x="${legendX + 8}" y="${legendY}" text-anchor="start" font-size="9" fill="var(--color-text-light)">${escapeXml(displayLang)}</text>
+      <circle cx="${legendX}" cy="${legendAreaY - 4}" r="3.5" fill="${color}" />
+      <text x="${legendX + 8}" y="${legendAreaY}" text-anchor="start" font-size="9" fill="var(--color-text-light)">${escapeXml(displayLang)}</text>
     `)
     legendX -= legendItemSpacing
   }
   const legendSvg = legendParts.length > 0 ? `
-      <text x="${legendStartX}" y="${legendY - 12}" text-anchor="end" font-size="9" fill="var(--color-text-light)" opacity="0.8">Lang</text>
+      <text x="${legendStartX}" y="${legendAreaY - 12}" text-anchor="end" font-size="9" fill="var(--color-text-light)" opacity="0.8">Lang</text>
       ${legendParts.join("")}
   ` : ""
 
   repoGroups.forEach((group, groupIndex) => {
-    const isTop = groupIndex % 2 === 0
+    const preferTop = groupIndex % 2 === 0
+    const topFirstLabelY = timelineY - baseOffset
+    const topLastLabelY = timelineY - baseOffset - (group.length - 1) * stackStep
+    const bottomFirstLabelY = timelineY + baseOffset
+    const bottomLastLabelY = timelineY + baseOffset + (group.length - 1) * stackStep
+    const topFits = topLastLabelY >= labelMinY
+    const bottomFits = bottomLastLabelY <= labelMaxY
+    const isTop = (preferTop && topFits) || (!preferTop && !bottomFits)
 
     group.forEach((repo, repoIndex) => {
       const repoDate = new Date(repo.created_at)
@@ -162,7 +175,8 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
 
       const offset = isTop ? -baseOffset : baseOffset
       const stackOffset = repoIndex * stackStep * (isTop ? -1 : 1)
-      const labelY = timelineY + offset + stackOffset
+      let labelY = timelineY + offset + stackOffset
+      labelY = Math.max(labelMinY, Math.min(labelMaxY, labelY))
 
       const color =
         repo.language && LANGUAGE_COLORS[repo.language] ? LANGUAGE_COLORS[repo.language] : LANGUAGE_COLORS.default
@@ -248,8 +262,8 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
       
       <rect width="${width}" height="${height}" fill="none" />
       
-      <!-- Title -->
-      <text x="${width / 2}" y="25" text-anchor="middle" font-size="16" font-weight="bold">
+      <!-- Title (in reserved zone, no repo can overlap) -->
+      <text x="${width / 2}" y="36" text-anchor="middle" font-size="18" font-weight="bold">
         ${username}'s GitHub Journey
       </text>
       
@@ -271,8 +285,8 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
       <!-- Language legend -->
       ${legendSvg}
       
-      <!-- RetroRepo branding -->
-      <text x="${padding}" y="${height - 15}" text-anchor="start" font-size="10" fill="var(--color-text-light)" opacity="0.7">
+      <!-- RetroRepo branding (in reserved legend zone) -->
+      <text x="${padding}" y="${height - 22}" text-anchor="start" font-size="10" fill="var(--color-text-light)" opacity="0.7">
         Generated by RetroRepo
       </text>
     </svg>
