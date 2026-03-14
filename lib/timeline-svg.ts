@@ -25,13 +25,20 @@ const LANGUAGE_COLORS: Record<string, string> = {
   HTML: "#e34c26",
   CSS: "#563d7c",
   Shell: "#89e051",
+  "Jupyter Notebook": "#da5b0b",
   default: "#6e7781",
 }
 
-const MAX_DISPLAY_NAME_LEN = 20
-const TRUNCATE_AT = 18
-const LABEL_WIDTH = 160
-const STACK_STEP = 14
+const LEGEND_ABBREV: Record<string, string> = {
+  "Jupyter Notebook": "Jupyter",
+  TypeScript: "TS",
+  JavaScript: "JS",
+}
+
+const MAX_DISPLAY_NAME_LEN = 24
+const TRUNCATE_AT = 22
+const LABEL_WIDTH = 180
+const STACK_STEP = 28
 
 function escapeXml(raw: string): string {
   return raw
@@ -42,18 +49,18 @@ function escapeXml(raw: string): string {
 }
 
 export function generateTimelineSvg(repos: TimelineRepo[], username: string): string {
-  // SVG dimensions and settings (tuned for less clutter and more vertical room)
-  const width = 900
-  const height = 440
-  const padding = 60
+  // Larger canvas to reduce density; vertical-only connectors to avoid line spaghetti
+  const width = 1000
+  const height = 500
+  const padding = 70
   const timelineY = height / 2
-  const dotRadius = 6
-  const labelHeight = 24
+  const dotRadius = 5
+  const labelHeight = 26
   const labelWidth = LABEL_WIDTH
   const labelRadius = 6
-  const minLabelSpacing = 162
-  const baseOffset = 65
-  const stackStep = labelHeight + STACK_STEP
+  const minLabelSpacing = 95
+  const baseOffset = 72
+  const stackStep = labelHeight + 8
 
   const firstDate = new Date(repos[0].created_at)
   const lastDate = new Date(repos[repos.length - 1].created_at)
@@ -126,33 +133,33 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
     }
   }
 
-  const legendY = height - 26
-  const legendStartX = width - padding - 24
-  const legendItemSpacing = 54
+  const legendY = height - 24
+  const legendStartX = width - padding - 16
+  const legendItemSpacing = 44
   const legendParts: string[] = []
   let legendX = legendStartX
   for (let i = languagesPresent.length - 1; i >= 0; i--) {
     const lang = languagesPresent[i]
+    const displayLang = LEGEND_ABBREV[lang] ?? lang
     const color = lang === "Other" ? LANGUAGE_COLORS.default : (LANGUAGE_COLORS[lang] ?? LANGUAGE_COLORS.default)
     legendParts.push(`
-      <circle cx="${legendX}" cy="${legendY - 4}" r="4" fill="${color}" />
-      <text x="${legendX + 10}" y="${legendY}" text-anchor="start" font-size="10" fill="var(--color-text-light)">${escapeXml(lang)}</text>
+      <circle cx="${legendX}" cy="${legendY - 4}" r="3.5" fill="${color}" />
+      <text x="${legendX + 8}" y="${legendY}" text-anchor="start" font-size="9" fill="var(--color-text-light)">${escapeXml(displayLang)}</text>
     `)
     legendX -= legendItemSpacing
   }
   const legendSvg = legendParts.length > 0 ? `
-      <text x="${legendStartX}" y="${legendY - 14}" text-anchor="end" font-size="9" fill="var(--color-text-light)" opacity="0.8">Language</text>
+      <text x="${legendStartX}" y="${legendY - 12}" text-anchor="end" font-size="9" fill="var(--color-text-light)" opacity="0.8">Lang</text>
       ${legendParts.join("")}
   ` : ""
 
   repoGroups.forEach((group, groupIndex) => {
-    const groupTimestamp = group.reduce((sum, repo) => sum + new Date(repo.created_at).getTime(), 0) / group.length
-    const groupDate = new Date(groupTimestamp)
-    const x = getXPosition(groupDate)
-
     const isTop = groupIndex % 2 === 0
 
     group.forEach((repo, repoIndex) => {
+      const repoDate = new Date(repo.created_at)
+      const repoX = getXPosition(repoDate)
+
       const offset = isTop ? -baseOffset : baseOffset
       const stackOffset = repoIndex * stackStep * (isTop ? -1 : 1)
       const labelY = timelineY + offset + stackOffset
@@ -160,33 +167,17 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
       const color =
         repo.language && LANGUAGE_COLORS[repo.language] ? LANGUAGE_COLORS[repo.language] : LANGUAGE_COLORS.default
 
-      const repoDate = new Date(repo.created_at)
-      const repoX = getXPosition(repoDate)
       dots += `<circle cx="${repoX}" cy="${timelineY}" r="${dotRadius}" fill="${color}" />`
 
-      if (group.length > 1 && Math.abs(repoX - x) > 5) {
-        const controlX = (repoX + x) / 2
-        const controlY = timelineY + (isTop ? -24 : 24)
-        connections += `
-          <path 
-            d="M${repoX},${timelineY} Q${controlX},${controlY} ${x},${labelY}" 
-            stroke="var(--color-connection)" 
-            stroke-width="1.2" 
-            fill="none" 
-          />
-        `
-      } else {
-        connections += `
-          <line 
-            x1="${repoX}" 
-            y1="${timelineY}" 
-            x2="${x}" 
-            y2="${labelY}" 
-            stroke="var(--color-connection)" 
-            stroke-width="1.2" 
-          />
-        `
-      }
+      // Vertical line only: dot straight up/down to label (no diagonal spaghetti)
+      connections += `
+        <line
+          x1="${repoX}" y1="${timelineY}"
+          x2="${repoX}" y2="${labelY}"
+          stroke="var(--color-connection)"
+          stroke-width="1"
+        />
+      `
 
       const displayName = repo.name.length > MAX_DISPLAY_NAME_LEN ? repo.name.substring(0, TRUNCATE_AT) + "..." : repo.name
       const yearCreated = new Date(repo.created_at).getFullYear()
@@ -197,20 +188,20 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
         <g>
           <a href="${repo.html_url}" target="_blank">
             <title>${titleEscaped}</title>
-            <rect 
-              x="${x - labelWidth / 2}" 
-              y="${labelY - labelHeight / 2}" 
-              width="${labelWidth}" 
-              height="${labelHeight}" 
-              rx="${labelRadius}" 
-              fill="var(--color-card)" 
-              stroke="var(--color-border)" 
+            <rect
+              x="${repoX - labelWidth / 2}"
+              y="${labelY - labelHeight / 2}"
+              width="${labelWidth}"
+              height="${labelHeight}"
+              rx="${labelRadius}"
+              fill="var(--color-card)"
+              stroke="var(--color-border)"
             />
-            <text 
-              x="${x}" 
-              y="${labelY + 5}" 
-              text-anchor="middle" 
-              font-size="12" 
+            <text
+              x="${repoX}"
+              y="${labelY + 5}"
+              text-anchor="middle"
+              font-size="12"
               fill="var(--color-text)"
             >${displayName}</text>
           </a>
