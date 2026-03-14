@@ -38,7 +38,7 @@ const LEGEND_ABBREV: Record<string, string> = {
 const MAX_DISPLAY_NAME_LEN = 24
 const TRUNCATE_AT = 22
 const LABEL_WIDTH = 180
-const STACK_STEP = 24
+const LABEL_VERTICAL_GAP = 10
 const TITLE_ZONE_BOTTOM = 72
 const LEGEND_ZONE_HEIGHT = 80
 
@@ -62,9 +62,9 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
   const labelHeight = 26
   const labelWidth = LABEL_WIDTH
   const labelRadius = 6
-  const minLabelSpacing = 95
-  const baseOffset = 56
-  const stackStep = STACK_STEP
+  const minLabelSpacing = 110
+  const baseOffset = 58
+  const stackStep = labelHeight + LABEL_VERTICAL_GAP
   const labelMinY = contentTop + labelHeight / 2
   const labelMaxY = contentBottom - labelHeight / 2
 
