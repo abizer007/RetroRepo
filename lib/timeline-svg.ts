@@ -39,10 +39,10 @@ const MAX_DISPLAY_NAME_LEN = 24
 const TRUNCATE_AT = 22
 const LABEL_WIDTH = 180
 const LABEL_HEIGHT = 26
-const LABEL_VERTICAL_GAP = 8
+const LABEL_VERTICAL_GAP = 12
 const TITLE_ZONE_BOTTOM = 72
 const LEGEND_ZONE_HEIGHT = 80
-const RECT_MARGIN = 2
+const RECT_MARGIN = 6
 
 function escapeXml(raw: string): string {
   return raw
@@ -53,9 +53,9 @@ function escapeXml(raw: string): string {
 }
 
 export function generateTimelineSvg(repos: TimelineRepo[], username: string): string {
-  const width = 1000
-  const height = 560
-  const padding = 70
+  const width = 1200
+  const height = 600
+  const padding = 80
   const legendZoneTop = height - LEGEND_ZONE_HEIGHT
   const contentTop = TITLE_ZONE_BOTTOM
   const contentBottom = legendZoneTop
@@ -111,18 +111,18 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
   for (let y = timelineY + baseOffset; y <= labelMaxY; y += slotStep) candidateYsBelow.push(y)
   const candidateYs = [...candidateYsAbove, ...candidateYsBelow]
 
-  function rectOverlaps(
-    left: number,
-    top: number,
-    right: number,
-    bottom: number,
-    placed: { left: number; top: number; right: number; bottom: number }[]
+  function rectsOverlapWithGap(
+    aLeft: number,
+    aTop: number,
+    aRight: number,
+    aBottom: number,
+    bLeft: number,
+    bTop: number,
+    bRight: number,
+    bBottom: number,
+    gap: number
   ): boolean {
-    const m = RECT_MARGIN
-    for (const p of placed) {
-      if (left < p.right + m && right + m > p.left && top < p.bottom + m && bottom + m > p.top) return true
-    }
-    return false
+    return aLeft < bRight + gap && aRight > bLeft - gap && aTop < bBottom + gap && aBottom > bTop - gap
   }
 
   const placedRects: { left: number; top: number; right: number; bottom: number }[] = []
@@ -135,12 +135,19 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
 
     let labelY: number | null = null
     for (const cy of candidateYs) {
-      const left = repoX - halfW
-      const right = repoX + halfW
-      const top = cy - halfH
-      const bottom = cy + halfH
+      const left = Math.floor(repoX - halfW)
+      const right = Math.ceil(repoX + halfW)
+      const top = Math.floor(cy - halfH)
+      const bottom = Math.ceil(cy + halfH)
       if (top < contentTop || bottom > contentBottom) continue
-      if (!rectOverlaps(left, top, right, bottom, placedRects)) {
+      let overlaps = false
+      for (const p of placedRects) {
+        if (rectsOverlapWithGap(left, top, right, bottom, p.left, p.top, p.right, p.bottom, RECT_MARGIN)) {
+          overlaps = true
+          break
+        }
+      }
+      if (!overlaps) {
         labelY = cy
         placedRects.push({ left, top, right, bottom })
         break
@@ -148,10 +155,10 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
     }
     if (labelY == null) {
       labelY = Math.max(labelMinY, Math.min(labelMaxY, timelineY + baseOffset))
-      const left = repoX - halfW
-      const right = repoX + halfW
-      const top = labelY - halfH
-      const bottom = labelY + halfH
+      const left = Math.floor(repoX - halfW)
+      const right = Math.ceil(repoX + halfW)
+      const top = Math.floor(labelY - halfH)
+      const bottom = Math.ceil(labelY + halfH)
       placedRects.push({ left, top, right, bottom })
     }
 

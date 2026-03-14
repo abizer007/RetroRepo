@@ -221,8 +221,8 @@ export default function Home() {
             <div className="space-y-4">
               <h2 className="text-2xl font-bold font-heading">Your GitHub Timeline</h2>
               <div className="bg-card border rounded-xl p-5 shadow-lg overflow-x-auto ring-1 ring-border/50">
-                <div className="min-w-[1000px]">
-                  <div className="w-full h-[560px]" dangerouslySetInnerHTML={{ __html: svgContent }} />
+                <div className="min-w-[1200px]">
+                  <div className="w-full h-[600px]" dangerouslySetInnerHTML={{ __html: svgContent }} />
                 </div>
               </div>
             </div>
