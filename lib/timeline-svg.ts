@@ -43,6 +43,7 @@ const LABEL_VERTICAL_GAP = 12
 const TITLE_ZONE_BOTTOM = 72
 const LEGEND_ZONE_HEIGHT = 80
 const RECT_MARGIN = 6
+const HORIZONTAL_STEP = LABEL_WIDTH + RECT_MARGIN
 
 function escapeXml(raw: string): string {
   return raw
@@ -126,14 +127,18 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
   }
 
   const placedRects: { left: number; top: number; right: number; bottom: number }[] = []
+  const halfW = labelWidth / 2
+  const halfH = labelHeight / 2
+  const minLabelX = padding + halfW
+  const maxLabelX = width - padding - halfW
 
   for (const repo of repos) {
     const repoDate = new Date(repo.created_at)
     const repoX = getXPosition(repoDate)
-    const halfW = labelWidth / 2
-    const halfH = labelHeight / 2
 
+    let labelX = repoX
     let labelY: number | null = null
+
     for (const cy of candidateYs) {
       const left = Math.floor(repoX - halfW)
       const right = Math.ceil(repoX + halfW)
@@ -148,15 +153,53 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
         }
       }
       if (!overlaps) {
+        labelX = repoX
         labelY = cy
         placedRects.push({ left, top, right, bottom })
         break
       }
     }
+
     if (labelY == null) {
+      const xOffsets: number[] = [0]
+      for (let k = 1; k <= 8; k++) {
+        xOffsets.push(k * HORIZONTAL_STEP)
+        xOffsets.push(-k * HORIZONTAL_STEP)
+      }
+      for (const xOff of xOffsets) {
+        const tryX = repoX + xOff
+        const tryLeft = Math.floor(tryX - halfW)
+        const tryRight = Math.ceil(tryX + halfW)
+        if (tryLeft < padding || tryRight > width - padding) continue
+        for (const cy of candidateYs) {
+          const top = Math.floor(cy - halfH)
+          const bottom = Math.ceil(cy + halfH)
+          if (top < contentTop || bottom > contentBottom) continue
+          let overlaps = false
+          for (const p of placedRects) {
+            if (rectsOverlapWithGap(tryLeft, top, tryRight, bottom, p.left, p.top, p.right, p.bottom, RECT_MARGIN)) {
+              overlaps = true
+              break
+            }
+          }
+          if (!overlaps) {
+            labelX = Math.max(minLabelX, Math.min(maxLabelX, tryX))
+            labelY = cy
+            const left = Math.floor(labelX - halfW)
+            const right = Math.ceil(labelX + halfW)
+            placedRects.push({ left, top, right, bottom })
+            break
+          }
+        }
+        if (labelY != null) break
+      }
+    }
+
+    if (labelY == null) {
+      labelX = repoX
       labelY = Math.max(labelMinY, Math.min(labelMaxY, timelineY + baseOffset))
-      const left = Math.floor(repoX - halfW)
-      const right = Math.ceil(repoX + halfW)
+      const left = Math.floor(labelX - halfW)
+      const right = Math.ceil(labelX + halfW)
       const top = Math.floor(labelY - halfH)
       const bottom = Math.ceil(labelY + halfH)
       placedRects.push({ left, top, right, bottom })
@@ -166,9 +209,14 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
       repo.language && LANGUAGE_COLORS[repo.language] ? LANGUAGE_COLORS[repo.language] : LANGUAGE_COLORS.default
 
     dots += `<circle cx="${repoX}" cy="${timelineY}" r="${dotRadius}" fill="${color}" />`
-    connections += `
-        <line x1="${repoX}" y1="${timelineY}" x2="${repoX}" y2="${labelY}" stroke="var(--color-connection)" stroke-width="1" />
-      `
+
+    if (Math.abs(labelX - repoX) < 2) {
+      connections += `<line x1="${repoX}" y1="${timelineY}" x2="${labelX}" y2="${labelY}" stroke="var(--color-connection)" stroke-width="1" />`
+    } else {
+      const cpx = repoX
+      const cpy = labelY
+      connections += `<path d="M ${repoX} ${timelineY} Q ${cpx} ${cpy} ${labelX} ${labelY}" stroke="var(--color-connection)" stroke-width="1" fill="none" />`
+    }
 
     const displayName = repo.name.length > MAX_DISPLAY_NAME_LEN ? repo.name.substring(0, TRUNCATE_AT) + "..." : repo.name
     const tooltipText = `${repo.name}${repo.language ? ` · ${repo.language}` : ""} · ${new Date(repo.created_at).getFullYear()}`
@@ -178,8 +226,8 @@ export function generateTimelineSvg(repos: TimelineRepo[], username: string): st
         <g>
           <a href="${repo.html_url}" target="_blank">
             <title>${titleEscaped}</title>
-            <rect x="${repoX - halfW}" y="${labelY - halfH}" width="${labelWidth}" height="${labelHeight}" rx="${labelRadius}" fill="var(--color-card)" stroke="var(--color-border)" />
-            <text x="${repoX}" y="${labelY + 5}" text-anchor="middle" font-size="12" fill="var(--color-text)">${displayName}</text>
+            <rect x="${labelX - halfW}" y="${labelY - halfH}" width="${labelWidth}" height="${labelHeight}" rx="${labelRadius}" fill="var(--color-card)" stroke="var(--color-border)" />
+            <text x="${labelX}" y="${labelY + 5}" text-anchor="middle" font-size="12" fill="var(--color-text)">${displayName}</text>
           </a>
         </g>
       `
