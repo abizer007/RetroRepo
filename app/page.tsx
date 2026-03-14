@@ -6,7 +6,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
-import { Loader2, Copy, Check, Github, Clock, Star, Code, GitBranch } from "lucide-react"
+import { Loader2, Copy, Check, Github, Clock, Star, Code, GitBranch, Download } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import ThemeToggle from "@/components/theme-toggle"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -90,24 +90,49 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const downloadSvg = async () => {
+    if (!username.trim()) return
+    try {
+      const res = await fetch(`${origin}/api/svg/${username}`)
+      if (!res.ok) throw new Error("Failed to download")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${username}-github-timeline.svg`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast({
+        title: "Downloaded",
+        description: "SVG saved to your device",
+      })
+    } catch {
+      toast({
+        title: "Download failed",
+        description: "Could not save SVG",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center px-4 py-8 md:py-16 bg-gradient-to-b from-background to-muted/50">
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
 
-      <div className="max-w-4xl w-full space-y-12 text-center">
-        <div className="space-y-4">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight flex items-center justify-center gap-2">
+      <div className="max-w-4xl w-full space-y-14 text-center">
+        <div className="space-y-5">
+          <h1 className="font-heading text-4xl md:text-5xl font-bold tracking-tight flex items-center justify-center gap-2">
             <Clock className="h-8 w-8 md:h-10 md:w-10 text-primary" />
             RetroRepo
           </h1>
-          <p className="text-lg text-muted-foreground max-w-xl mx-auto">
+          <p className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto leading-relaxed">
             Visualize your GitHub journey — as a timeline you can embed in your README.
           </p>
         </div>
 
-        <Card className="bg-background/80 backdrop-blur-sm border shadow-lg">
+        <Card className="bg-background/80 backdrop-blur-sm border shadow-lg rounded-xl">
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
@@ -152,7 +177,7 @@ export default function Home() {
           <div className="space-y-8 animate-in fade-in duration-500">
             {userStats && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
+                <Card className="rounded-xl border shadow-sm">
                   <CardContent className="pt-6 flex flex-col items-center justify-center h-full">
                     <div className="flex items-center gap-2 mb-2">
                       <Code className="h-5 w-5 text-primary" />
@@ -164,7 +189,7 @@ export default function Home() {
                     </p>
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="rounded-xl border shadow-sm">
                   <CardContent className="pt-6 flex flex-col items-center justify-center h-full">
                     <div className="flex items-center gap-2 mb-2">
                       <Star className="h-5 w-5 text-yellow-500" />
@@ -176,7 +201,7 @@ export default function Home() {
                     </p>
                   </CardContent>
                 </Card>
-                <Card>
+                <Card className="rounded-xl border shadow-sm">
                   <CardContent className="pt-6 flex flex-col items-center justify-center h-full">
                     <div className="flex items-center gap-2 mb-2">
                       <GitBranch className="h-5 w-5 text-green-500" />
@@ -194,16 +219,16 @@ export default function Home() {
             )}
 
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">Your GitHub Timeline</h2>
-              <div className="bg-card border rounded-lg p-4 shadow-md overflow-x-auto">
+              <h2 className="text-2xl font-bold font-heading">Your GitHub Timeline</h2>
+              <div className="bg-card border rounded-xl p-5 shadow-lg overflow-x-auto ring-1 ring-border/50">
                 <div className="min-w-[900px]">
-                  <div className="w-full h-[400px]" dangerouslySetInnerHTML={{ __html: svgContent }} />
+                  <div className="w-full h-[440px]" dangerouslySetInnerHTML={{ __html: svgContent }} />
                 </div>
               </div>
             </div>
 
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold">Embed in your README</h2>
+              <h2 className="text-2xl font-bold font-heading">Embed in your README</h2>
               <Tabs
                 defaultValue="markdown"
                 className="w-full"
@@ -214,7 +239,7 @@ export default function Home() {
                   <TabsTrigger value="html">HTML</TabsTrigger>
                 </TabsList>
                 <TabsContent value="markdown" className="mt-4">
-                  <div className="bg-card border rounded-lg shadow-md overflow-hidden">
+                  <div className="bg-card border rounded-xl shadow-md overflow-hidden">
                     <div className="bg-muted p-3 flex justify-between items-center border-b">
                       <span className="text-sm font-medium">Markdown</span>
                       <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-8 gap-1">
@@ -237,7 +262,7 @@ export default function Home() {
                   </div>
                 </TabsContent>
                 <TabsContent value="html" className="mt-4">
-                  <div className="bg-card border rounded-lg shadow-md overflow-hidden">
+                  <div className="bg-card border rounded-xl shadow-md overflow-hidden">
                     <div className="bg-muted p-3 flex justify-between items-center border-b">
                       <span className="text-sm font-medium">HTML</span>
                       <Button variant="ghost" size="sm" onClick={copyToClipboard} className="h-8 gap-1">
@@ -262,8 +287,23 @@ export default function Home() {
               </Tabs>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex flex-wrap justify-center gap-3">
               <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={downloadSvg}
+                      className="gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download SVG
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Save the timeline as an SVG file</p>
+                  </TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
